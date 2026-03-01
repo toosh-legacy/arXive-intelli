@@ -49,7 +49,7 @@ If the app is on Vercel and the frontend shows "Failed to fetch":
 | **Failed to fetch** (browser) | Wrong API URL, API down, or CORS. Check `[arXiv-Intelli API]` → `url` and `base`. |
 | **404 on /api/...** | Routing: `vercel.json` routes `/api/*` to `api/index.py`. Confirm deployment includes the API. |
 | **Stats/search never load** | Backend not responding. Test `https://your-app.vercel.app/api/health` in the browser. |
-| **`papers_loaded: 0`** | Data not loaded. Check `PAPERS_DATA_URL` in Vercel env vars and Vercel function logs. |
+| **`papers_loaded: 0`** | Data not loaded. Check MongoDB env vars (`MONGODB_URI`, `MONGODB_DB_NAME`, `MONGODB_COLLECTION`) in Vercel and function logs. |
 | **CORS errors in Console** | Often caused by `REACT_APP_API_URL` set to a **separate** backend (e.g. `https://your-backend-api.com`). When frontend + API are both on Vercel, **remove** `REACT_APP_API_URL` so the app uses same-origin `/api/...`. |
 
 ---

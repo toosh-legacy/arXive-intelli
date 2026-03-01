@@ -1,15 +1,12 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-import sys
-import json
 import re
 from pathlib import Path
 from typing import Optional
 import pickle
 import os
-import urllib.request
-import gzip
-import tempfile
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 # Copy the query expansion code inline for Vercel
 POPULAR_SEARCHES = [
@@ -41,58 +38,41 @@ app.add_middleware(
 # Paths
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
-DATA_PATH = BASE_DIR / "papers_data.json"
+
+# MongoDB Atlas config
+MONGODB_URI = os.environ.get("MONGODB_URI", "")
+MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "arxive_intelli")
+MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "papers")
 
 # Load papers data (normalize fields so both db-export and original JSON work)
 PAPERS = []
 PAPERS_BY_ID = {}
+MONGO_CONNECTED = False
 
 def load_papers_data():
-    """Load papers data from local file or download from external storage."""
-    global PAPERS, PAPERS_BY_ID
-    
-    # Try to load from local file first
-    if DATA_PATH.exists():
-        print(f"Loading papers from local file: {DATA_PATH}...")
-        with open(DATA_PATH, 'r', encoding='utf-8') as f:
-            raw = json.load(f)
-    else:
-        # Try to download from external storage
-        PAPERS_DATA_URL = os.environ.get('PAPERS_DATA_URL')
-        if PAPERS_DATA_URL:
-            try:
-                print(f"Downloading papers data from {PAPERS_DATA_URL}...")
-                
-                # Download to temp file
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.json.gz') as tmp:
-                    urllib.request.urlretrieve(PAPERS_DATA_URL, tmp.name)
-                    tmp_path = tmp.name
-                
-                # Check if it's compressed
-                try:
-                    with gzip.open(tmp_path, 'rt', encoding='utf-8') as f:
-                        raw = json.load(f)
-                    print("Loaded compressed JSON file")
-                except (gzip.BadGzipFile, OSError):
-                    # Not compressed, try as regular JSON
-                    with open(tmp_path, 'r', encoding='utf-8') as f:
-                        raw = json.load(f)
-                    print("Loaded uncompressed JSON file")
-                
-                # Save locally for future use
-                with open(DATA_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(raw, f, ensure_ascii=False, separators=(',', ':'))
-                print(f"Saved to {DATA_PATH} for future use")
-                
-                # Clean up temp file
-                os.unlink(tmp_path)
-            except Exception as e:
-                print(f"Failed to download papers data: {e}")
-                print("WARNING: papers_data.json not found and download failed")
-                return
-        else:
-            print("WARNING: papers_data.json not found and PAPERS_DATA_URL not set")
-            return
+    """Load papers data from MongoDB Atlas cluster."""
+    global PAPERS, PAPERS_BY_ID, MONGO_CONNECTED
+
+    PAPERS = []
+    PAPERS_BY_ID = {}
+    MONGO_CONNECTED = False
+
+    if not MONGODB_URI:
+        print("WARNING: MONGODB_URI is not set; no papers loaded")
+        return
+
+    try:
+        print(f"Connecting to MongoDB Atlas database '{MONGODB_DB_NAME}', collection '{MONGODB_COLLECTION}'...")
+        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8000)
+        client.admin.command("ping")
+        MONGO_CONNECTED = True
+
+        collection = client[MONGODB_DB_NAME][MONGODB_COLLECTION]
+        raw = list(collection.find({}, {"_id": 0}))
+        print(f"Fetched {len(raw)} papers from MongoDB")
+    except PyMongoError as e:
+        print(f"Failed to load papers from MongoDB: {e}")
+        return
     
     # Process papers
     for item in raw:
@@ -317,8 +297,9 @@ async def health():
         "status": "ok",
         "papers_loaded": len(PAPERS),
         "bm25_loaded": BM25 is not None,
-        "data_path": str(DATA_PATH),
-        "data_exists": DATA_PATH.exists()
+        "mongodb_connected": MONGO_CONNECTED,
+        "mongodb_db": MONGODB_DB_NAME,
+        "mongodb_collection": MONGODB_COLLECTION
     }
 
 # For Vercel Python runtime, FastAPI app is automatically detected

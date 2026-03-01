@@ -6,9 +6,9 @@ __pycache__/
 papers.db
 bm25.pkl
 api/papers.db
-# Note: api/papers_data.json (small sample) can be committed for testing
-# Large versions (80k+ papers) should NOT be committed - use external storage
+api/papers_data.json
 api/papers_data.json.gz
+# Note: MongoDB Atlas is now the primary data source
 
 # Environments
 .venv/
